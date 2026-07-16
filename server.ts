@@ -1088,6 +1088,44 @@ async function startServer() {
     res.json(transactions);
   });
 
+  // 5x. Restore and Merge Transaction History from Google Drive
+  app.post("/api/transactions/restore", async (req, res) => {
+    const { restoredTransactions } = req.body;
+    if (!restoredTransactions || !Array.isArray(restoredTransactions)) {
+      return res.status(400).json({ error: "Invalid transactions array" });
+    }
+    
+    try {
+      const currentTxs = await loadTransactions();
+      const currentIds = new Set(currentTxs.map(t => t.id));
+      
+      let addedCount = 0;
+      for (const tx of restoredTransactions) {
+        if (tx && tx.id && !currentIds.has(tx.id)) {
+          // Push if it doesn't already exist to prevent duplicate records
+          currentTxs.push(tx);
+          addedCount++;
+        }
+      }
+      
+      if (addedCount > 0) {
+        // Sort transactions by createdAt descending to keep list clean and correct
+        currentTxs.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        await saveTransactions(currentTxs);
+      }
+      
+      res.json({ 
+        success: true, 
+        message: `Successfully imported ${addedCount} new transactions.`, 
+        count: addedCount, 
+        transactions: currentTxs 
+      });
+    } catch (err: any) {
+      console.error("Failed to restore transactions:", err);
+      res.status(500).json({ error: "Failed to restore transactions on the server." });
+    }
+  });
+
   // 5a. Get Developer Settings (Solana self-custody wallet)
   app.get("/api/settings", async (req, res) => {
     const settings = await loadSettings();
